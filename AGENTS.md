@@ -82,3 +82,6 @@ bd close <id>         # Complete work
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 <!-- END BEADS INTEGRATION -->
+
+COMMITTING:
+- ALWAYS use conventional commits
