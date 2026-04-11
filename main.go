@@ -5,9 +5,10 @@ import (
 	"log"
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"sub-muse/internal/config"
 	"sub-muse/internal/setup"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {

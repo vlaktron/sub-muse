@@ -1,13 +1,14 @@
 package setup
 
 import (
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/lipgloss"
 	"sub-muse/internal/config"
 	"sub-muse/internal/keyring"
 	"sub-muse/internal/subsonic"
+
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type Step int
@@ -34,15 +35,13 @@ type saveResult struct {
 }
 
 type Model struct {
-	step       Step
-	serverURL  textinput.Model
-	username   textinput.Model
-	password   textinput.Model
-	spinner    spinner.Model
-	errorMsg   string
-	result     *SetupResult
-	serverURLs string
-	focused    int
+	step      Step
+	serverURL textinput.Model
+	username  textinput.Model
+	password  textinput.Model
+	spinner   spinner.Model
+	errorMsg  string
+	focused   int
 }
 
 func NewModel() Model {
@@ -136,7 +135,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 	case StepWelcome:
 		m.step = StepServerURL
 		m.serverURL.Focus()
-case StepServerURL:
+	case StepServerURL:
 		m.step = StepUsername
 		m.focused = 2
 		m.username.Focus()

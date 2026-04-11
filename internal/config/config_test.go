@@ -46,7 +46,7 @@ func TestIsConfigured_NotConfigured(t *testing.T) {
 func TestIsConfigured_Configured(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "sub-muse")
-	os.MkdirAll(configDir, 0755)
+	require.NoError(t, os.MkdirAll(configDir, 0755))
 
 	configFile := filepath.Join(configDir, "config.yaml")
 	configData := `configured: true
@@ -54,7 +54,7 @@ server_url: "http://test.example.com"
 username: "testuser"
 client_name: "test-client"
 `
-	os.WriteFile(configFile, []byte(configData), 0600)
+	require.NoError(t, os.WriteFile(configFile, []byte(configData), 0600))
 
 	originalConfigPath := configPath
 	configPath = configFile
