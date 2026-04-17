@@ -4,6 +4,7 @@
 
 # directories
 /plans
+/bin
 
 # Binaries for programs and plugins
 *.exe
