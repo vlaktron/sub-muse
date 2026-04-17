@@ -210,3 +210,158 @@ func TestGetArtist_VerifyParams(t *testing.T) {
 	require.Contains(t, capturedURL, "id=42")
 	require.Contains(t, capturedURL, "f=json")
 }
+
+func TestStream_Success(t *testing.T) {
+	mockAudio := []byte{0x00, 0x01, 0x02, 0x03, 0x04}
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	data, err := client.Stream(WithID("123"))
+	require.NoError(t, err)
+	require.Equal(t, mockAudio, data)
+}
+
+func TestStream_WithFormat(t *testing.T) {
+	var capturedURL string
+	mockAudio := []byte{0x00, 0x01, 0x02}
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("456"), WithFormat("mp3"))
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "id=456")
+	require.Contains(t, capturedURL, "format=mp3")
+}
+
+func TestStream_WithMaxBitRate(t *testing.T) {
+	var capturedURL string
+	mockAudio := []byte{0x00, 0x01, 0x02}
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("789"), WithMaxBitRate(128))
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "maxBitRate=128")
+}
+
+func TestStream_MultipleOptions(t *testing.T) {
+	var capturedURL string
+	mockAudio := []byte{0x00, 0x01, 0x02}
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("111"), WithFormat("flac"), WithMaxBitRate(256))
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "id=111")
+	require.Contains(t, capturedURL, "format=flac")
+	require.Contains(t, capturedURL, "maxBitRate=256")
+}
+
+func TestStream_HTTPError(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Status:     "404 Not Found",
+					Body:       io.NopCloser(bytes.NewReader([]byte("not found"))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("999"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 404")
+}
+
+func TestStream_NetworkError(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return nil, fmt.Errorf("network error")
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("999"))
+	require.Error(t, err)
+	require.Equal(t, "network error", err.Error())
+}
+
+func TestStream_VerifyParams(t *testing.T) {
+	var capturedURL string
+	mockAudio := []byte{0x00, 0x01, 0x02}
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("42"))
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "id=42")
+	require.Contains(t, capturedURL, "f=json")
+}
