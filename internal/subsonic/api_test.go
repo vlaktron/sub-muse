@@ -365,3 +365,65 @@ func TestStream_VerifyParams(t *testing.T) {
 	require.Contains(t, capturedURL, "id=42")
 	require.Contains(t, capturedURL, "f=json")
 }
+
+func TestStream_WithTimeOffset(t *testing.T) {
+	var capturedURL string
+	mockAudio := []byte{0x00, 0x01, 0x02}
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(mockAudio)),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("123"), WithTimeOffset(30))
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "id=123")
+	require.Contains(t, capturedURL, "timeOffset=30")
+}
+
+func TestStream_EmptyID(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusBadRequest,
+					Status:     "400 Bad Request",
+					Body:       io.NopCloser(bytes.NewReader([]byte("empty id"))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID(""))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 400")
+}
+
+func TestStream_ServerError(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Status:     "500 Internal Server Error",
+					Body:       io.NopCloser(bytes.NewReader([]byte("server error"))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.Stream(WithID("999"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 500")
+}

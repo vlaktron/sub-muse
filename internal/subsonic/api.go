@@ -144,6 +144,7 @@ type StreamOptions struct {
 	ID         string
 	Format     string
 	MaxBitRate int
+	TimeOffset int
 }
 
 type StreamOption func(*StreamOptions)
@@ -166,6 +167,12 @@ func WithMaxBitRate(bitRate int) StreamOption {
 	}
 }
 
+func WithTimeOffset(offset int) StreamOption {
+	return func(o *StreamOptions) {
+		o.TimeOffset = offset
+	}
+}
+
 func (c *Client) Stream(opts ...StreamOption) ([]byte, error) {
 	options := &StreamOptions{}
 	for _, opt := range opts {
@@ -180,6 +187,9 @@ func (c *Client) Stream(opts ...StreamOption) ([]byte, error) {
 	}
 	if options.MaxBitRate > 0 {
 		params["maxBitRate"] = fmt.Sprintf("%d", options.MaxBitRate)
+	}
+	if options.TimeOffset > 0 {
+		params["timeOffset"] = fmt.Sprintf("%d", options.TimeOffset)
 	}
 
 	requestURL, err := c.buildRequest("stream", params)
