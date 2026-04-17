@@ -39,7 +39,7 @@ func (c *Client) buildRequest(endpoint string, params map[string]string) (string
 		return "", err
 	}
 
-	u.Path = fmt.Sprintf("%s/%s", u.Path, endpoint)
+	u.Path = "/rest/" + endpoint
 
 	query := u.Query()
 	query.Set("u", c.username)

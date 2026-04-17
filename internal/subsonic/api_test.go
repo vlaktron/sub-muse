@@ -11,7 +11,7 @@ import (
 )
 
 func TestGetArtists_Success(t *testing.T) {
-	mockJSON := `{"subsonic-response":{"status":"ok","artists":{"artist":[{"id":"1","name":"Artist 1","albumCount":5,"coverArt":"1"},{"id":"2","name":"Artist 2","albumCount":3,"coverArt":"2"}]}}}`
+	mockJSON := `{"subsonic-response":{"status":"ok","artists":{"index":[{"name":"A","artist":[{"id":"1","name":"Artist 1","albumCount":5,"coverArt":"1"}]},{"name":"B","artist":[{"id":"2","name":"Artist 2","albumCount":3,"coverArt":"2"}]}]}}}`
 
 	client := &Client{
 		httpClient: &mockHTTPClient{
@@ -32,7 +32,7 @@ func TestGetArtists_Success(t *testing.T) {
 }
 
 func TestGetArtists_Empty(t *testing.T) {
-	mockJSON := `{"subsonic-response":{"status":"ok","artists":{}}}`
+	mockJSON := `{"subsonic-response":{"status":"ok","artists":{"index":[]}}}`
 
 	client := &Client{
 		httpClient: &mockHTTPClient{

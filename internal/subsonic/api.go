@@ -30,7 +30,9 @@ func (c *Client) GetMusicFolders() ([]MusicFolder, error) {
 func (c *Client) GetArtists() ([]Artist, error) {
 	var envelope struct {
 		Artists struct {
-			Artist []Artist `json:"artist"`
+			Index []struct {
+				Artist []Artist `json:"artist"`
+			} `json:"index"`
 		} `json:"artists"`
 	}
 
@@ -38,7 +40,11 @@ func (c *Client) GetArtists() ([]Artist, error) {
 		return nil, err
 	}
 
-	return envelope.Artists.Artist, nil
+	var artists []Artist
+	for _, idx := range envelope.Artists.Index {
+		artists = append(artists, idx.Artist...)
+	}
+	return artists, nil
 }
 
 // GetArtist gets an artist by ID including their albums

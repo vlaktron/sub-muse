@@ -11,18 +11,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func getTestEnv(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
-
 var (
-	testBaseURL    = getTestEnv("TEST_SUBSONIC_URL", "http://192.168.1.5:4533/")
-	testUsername   = getTestEnv("TEST_SUBSONIC_USERNAME", "sub-muse")
-	testPassword   = getTestEnv("TEST_SUBSONIC_PASSWORD", "Test12345!")
-	testClientName = getTestEnv("TEST_SUBSONIC_CLIENT_NAME", "sub-muse-test")
+	testBaseURL    = os.Getenv("TEST_SUBSONIC_URL")
+	testUsername   = os.Getenv("TEST_SUBSONIC_USERNAME")
+	testPassword   = os.Getenv("TEST_SUBSONIC_PASSWORD")
+	testClientName = os.Getenv("TEST_SUBSONIC_CLIENT_NAME")
 )
 
 func TestNewClient_Success(t *testing.T) {
@@ -40,19 +33,19 @@ func TestClient_buildRequest_BasicURL(t *testing.T) {
 
 	url, err := client.buildRequest("test", nil)
 	require.NoError(t, err)
-	require.Contains(t, url, "http://example.com//test")
+	require.Contains(t, url, "http://example.com/rest/test")
 }
 
 func TestClient_buildRequest_QueryParams(t *testing.T) {
-	client := NewClient("http://example.com/", testUsername, testPassword, testClientName)
+	client := NewClient("http://example.com/", "testuser", "testpass!", "testclient")
 
 	url, err := client.buildRequest("test", nil)
 	require.NoError(t, err)
 
-	require.Contains(t, url, "u="+testUsername)
-	require.Contains(t, url, "p=Test12345%21")
+	require.Contains(t, url, "u=testuser")
+	require.Contains(t, url, "p=testpass%21")
 	require.Contains(t, url, "v=1.16.1")
-	require.Contains(t, url, "c="+testClientName)
+	require.Contains(t, url, "c=testclient")
 	require.Contains(t, url, "f=json")
 }
 
@@ -88,12 +81,17 @@ func TestClient_sendRequest_Success(t *testing.T) {
 		"subsonic-response": {
 			"status": "ok",
 			"artists": {
-				"artist": [
+				"index": [
 					{
-						"id": "1",
-						"name": "Artist 1",
-						"albumCount": 5,
-						"coverArt": "1"
+						"name": "A",
+						"artist": [
+							{
+								"id": "1",
+								"name": "Artist 1",
+								"albumCount": 5,
+								"coverArt": "1"
+							}
+						]
 					}
 				]
 			}
@@ -114,14 +112,17 @@ func TestClient_sendRequest_Success(t *testing.T) {
 	var response struct {
 		Status  string `json:"status"`
 		Artists struct {
-			Artist []Artist `json:"artist"`
+			Index []struct {
+				Artist []Artist `json:"artist"`
+			} `json:"index"`
 		} `json:"artists"`
 	}
 
 	err := client.sendRequest("getArtists", nil, &response)
 	require.NoError(t, err)
-	require.Len(t, response.Artists.Artist, 1)
-	require.Equal(t, "Artist 1", response.Artists.Artist[0].Name)
+	require.Len(t, response.Artists.Index, 1)
+	require.Len(t, response.Artists.Index[0].Artist, 1)
+	require.Equal(t, "Artist 1", response.Artists.Index[0].Artist[0].Name)
 }
 
 func TestClient_sendRequest_HTTPError(t *testing.T) {
