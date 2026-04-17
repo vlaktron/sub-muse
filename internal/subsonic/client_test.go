@@ -2,7 +2,6 @@ package subsonic
 
 import (
 	"bytes"
-	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
@@ -52,8 +51,9 @@ func TestClient_buildRequest_QueryParams(t *testing.T) {
 
 	require.Contains(t, url, "u="+testUsername)
 	require.Contains(t, url, "p=Test12345%21")
-	require.Contains(t, url, "v=1.15.0")
+	require.Contains(t, url, "v=1.16.1")
 	require.Contains(t, url, "c="+testClientName)
+	require.Contains(t, url, "f=json")
 }
 
 func TestClient_buildRequest_CustomParams(t *testing.T) {
@@ -84,29 +84,38 @@ func TestClient_buildRequest_Error(t *testing.T) {
 }
 
 func TestClient_sendRequest_Success(t *testing.T) {
-	mockXML := `<?xml version="1.0"?>
-<subsonic-response status="ok">
-	<artists>
-		<artist id="1" name="Artist 1" albumCount="5" coverArt="1"/>
-	</artists>
-</subsonic-response>`
+	mockJSON := `{
+		"subsonic-response": {
+			"status": "ok",
+			"artists": {
+				"artist": [
+					{
+						"id": "1",
+						"name": "Artist 1",
+						"albumCount": 5,
+						"coverArt": "1"
+					}
+				]
+			}
+		}
+	}`
 
 	client := &Client{
 		httpClient: &mockHTTPClient{
 			doFunc: func(req *http.Request) (*http.Response, error) {
 				return &http.Response{
 					StatusCode: http.StatusOK,
-					Body:       io.NopCloser(bytes.NewReader([]byte(mockXML))),
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
 				}, nil
 			},
 		},
 	}
 
 	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
+		Status  string `json:"status"`
 		Artists struct {
-			Artist []Artist `xml:"artist"`
-		} `xml:"artists"`
+			Artist []Artist `json:"artist"`
+		} `json:"artists"`
 	}
 
 	err := client.sendRequest("getArtists", nil, &response)

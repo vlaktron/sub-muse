@@ -1,121 +1,105 @@
 package subsonic
 
 import (
-	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 )
 
-// GetMusicFolders gets the list of music folders
-func (c *Client) GetMusicFolders() (*MusicDirectory, error) {
-	var response SubsonicResponse
-	err := c.sendRequest("getMusicFolders", nil, &response)
-	if err != nil {
+// Ping checks connectivity to the server
+func (c *Client) Ping() error {
+	return c.sendRequest("ping", nil, nil)
+}
+
+// GetMusicFolders gets the list of configured music folders
+func (c *Client) GetMusicFolders() ([]MusicFolder, error) {
+	var envelope struct {
+		MusicFolders struct {
+			Folder []MusicFolder `json:"musicFolder"`
+		} `json:"musicFolders"`
+	}
+
+	if err := c.sendRequest("getMusicFolders", nil, &envelope); err != nil {
 		return nil, err
 	}
 
-	// Parse the response to get music folders
-	// This is a simplified example - you'd need to handle the actual XML structure
-	return &MusicDirectory{}, nil
+	return envelope.MusicFolders.Folder, nil
 }
 
 // GetArtists gets the list of artists
 func (c *Client) GetArtists() ([]Artist, error) {
-	params := map[string]string{
-		"musicFolderId": "",
-	}
-
-	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
+	var envelope struct {
 		Artists struct {
-			Artist []Artist `xml:"artist"`
-		} `xml:"artists"`
+			Artist []Artist `json:"artist"`
+		} `json:"artists"`
 	}
 
-	err := c.sendRequest("getArtists", params, &response)
-	if err != nil {
+	if err := c.sendRequest("getArtists", nil, &envelope); err != nil {
 		return nil, err
 	}
 
-	return response.Artists.Artist, nil
+	return envelope.Artists.Artist, nil
 }
 
-// GetAlbums gets the list of albums
-func (c *Client) GetAlbums() ([]Album, error) {
-	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
-		Albums  struct {
-			Album []Album `xml:"album"`
-		} `xml:"albums"`
+// GetArtist gets an artist by ID including their albums
+func (c *Client) GetArtist(artistID string) (*Artist, error) {
+	var envelope struct {
+		Artist Artist `json:"artist"`
 	}
 
-	err := c.sendRequest("getAlbumList", map[string]string{
+	if err := c.sendRequest("getArtist", map[string]string{"id": artistID}, &envelope); err != nil {
+		return nil, err
+	}
+
+	return &envelope.Artist, nil
+}
+
+// GetAlbums gets the list of albums alphabetically
+func (c *Client) GetAlbums() ([]Album, error) {
+	var envelope struct {
+		AlbumList struct {
+			Albums []Album `json:"album"`
+		} `json:"albumList"`
+	}
+
+	if err := c.sendRequest("getAlbumList", map[string]string{
 		"type": "alphabeticalByName",
 		"size": "1000",
-	}, &response)
-	if err != nil {
+	}, &envelope); err != nil {
 		return nil, err
 	}
 
-	return response.Albums.Album, nil
+	return envelope.AlbumList.Albums, nil
 }
 
-// GetSongs gets the list of songs
-func (c *Client) GetSongs() ([]Song, error) {
-	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
-		Songs   struct {
-			Song []Song `xml:"song"`
-		} `xml:"songs"`
-	}
-
-	err := c.sendRequest("getSongs", map[string]string{
-		"size": "1000",
-	}, &response)
-	if err != nil {
-		return nil, err
-	}
-
-	return response.Songs.Song, nil
-}
-
-// GetAlbum gets a specific album by ID
+// GetAlbum gets a specific album by ID including its songs
 func (c *Client) GetAlbum(id string) (*Album, error) {
-	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
-		Album   struct {
-			Album Album `xml:"album"`
-		} `xml:"album"`
+	var envelope struct {
+		Album Album `json:"album"`
 	}
 
-	err := c.sendRequest("getAlbum", map[string]string{
-		"id": id,
-	}, &response)
-	if err != nil {
+	if err := c.sendRequest("getAlbum", map[string]string{"id": id}, &envelope); err != nil {
 		return nil, err
 	}
 
-	return &response.Album.Album, nil
+	return &envelope.Album, nil
 }
 
-// GetSongsByArtist gets songs by a specific artist
-func (c *Client) GetSongsByArtist(artistID string) ([]Song, error) {
-	var response struct {
-		XMLName xml.Name `xml:"subsonic-response"`
-		Songs   struct {
-			Song []Song `xml:"song"`
-		} `xml:"songs"`
+// GetSongs gets a random list of songs
+func (c *Client) GetSongs() ([]Song, error) {
+	var envelope struct {
+		RandomSongs struct {
+			Song []Song `json:"song"`
+		} `json:"randomSongs"`
 	}
 
-	err := c.sendRequest("getSongsByArtist", map[string]string{
-		"artistId": artistID,
-	}, &response)
-	if err != nil {
+	if err := c.sendRequest("getRandomSongs", map[string]string{
+		"size": "1000",
+	}, &envelope); err != nil {
 		return nil, err
 	}
 
-	return response.Songs.Song, nil
+	return envelope.RandomSongs.Song, nil
 }
 
 // GetCoverArt gets cover art for an album
