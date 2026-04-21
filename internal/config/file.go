@@ -3,6 +3,9 @@ package config
 import (
 	"errors"
 	"os"
+	"path/filepath"
+
+	"sub-muse/internal/keyring"
 
 	"gopkg.in/yaml.v3"
 )
@@ -48,6 +51,12 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	if config.Password == "" {
+		if pwd, err := keyring.GetPassword(config.Username); err == nil {
+			config.Password = pwd
+		}
+	}
+
 	if config.Username == "" || config.Password == "" {
 		return nil, ErrNotConfigured
 	}
@@ -56,7 +65,7 @@ func LoadConfig() (*Config, error) {
 }
 
 func loadConfigFile() (*Config, error) {
-	configPath, err := getConfigPath()
+	configPath, err := GetConfigPath()
 	if err != nil {
 		return nil, err
 	}
@@ -82,8 +91,13 @@ func loadConfigFile() (*Config, error) {
 }
 
 func SaveConfig(cfg *Config) error {
-	configPath, err := getConfigPath()
+	configPath, err := GetConfigPath()
 	if err != nil {
+		return err
+	}
+
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return err
 	}
 
@@ -92,11 +106,11 @@ func SaveConfig(cfg *Config) error {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0600)
+	return os.WriteFile(configPath, data, 0o600)
 }
 
 func IsConfigured() (bool, error) {
-	configPath, err := getConfigPath()
+	configPath, err := GetConfigPath()
 	if err != nil {
 		return false, err
 	}
@@ -119,7 +133,7 @@ func IsConfigured() (bool, error) {
 
 var configPath = ""
 
-func getConfigPath() (string, error) {
+func GetConfigPath() (string, error) {
 	if configPath != "" {
 		return configPath, nil
 	}

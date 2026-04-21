@@ -139,3 +139,78 @@ func (c *Client) GetCoverArt(coverArtID string, size int) ([]byte, error) {
 
 	return io.ReadAll(resp.Body)
 }
+
+type StreamOptions struct {
+	ID         string
+	Format     string
+	MaxBitRate int
+	TimeOffset int
+}
+
+type StreamOption func(*StreamOptions)
+
+func WithID(id string) StreamOption {
+	return func(o *StreamOptions) {
+		o.ID = id
+	}
+}
+
+func WithFormat(format string) StreamOption {
+	return func(o *StreamOptions) {
+		o.Format = format
+	}
+}
+
+func WithMaxBitRate(bitRate int) StreamOption {
+	return func(o *StreamOptions) {
+		o.MaxBitRate = bitRate
+	}
+}
+
+func WithTimeOffset(offset int) StreamOption {
+	return func(o *StreamOptions) {
+		o.TimeOffset = offset
+	}
+}
+
+func (c *Client) Stream(opts ...StreamOption) ([]byte, error) {
+	options := &StreamOptions{}
+	for _, opt := range opts {
+		opt(options)
+	}
+
+	params := map[string]string{
+		"id": options.ID,
+	}
+	if options.Format != "" {
+		params["format"] = options.Format
+	}
+	if options.MaxBitRate > 0 {
+		params["maxBitRate"] = fmt.Sprintf("%d", options.MaxBitRate)
+	}
+	if options.TimeOffset > 0 {
+		params["timeOffset"] = fmt.Sprintf("%d", options.TimeOffset)
+	}
+
+	requestURL, err := c.buildRequest("stream", params)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", requestURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
+	}
+
+	return io.ReadAll(resp.Body)
+}
