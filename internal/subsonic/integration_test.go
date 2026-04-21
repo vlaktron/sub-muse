@@ -76,4 +76,15 @@ func TestIntegration(t *testing.T) {
 		require.NotEmpty(t, songs, "expected at least one song")
 		t.Logf("songs: %d total, first: %q by %s", len(songs), songs[0].Title, songs[0].Artist)
 	})
+
+	t.Run("Stream", func(t *testing.T) {
+		songs, err := client.GetSongs()
+		require.NoError(t, err)
+		require.NotEmpty(t, songs, "expected at least one song")
+
+		data, err := client.Stream(WithID(songs[0].ID))
+		require.NoError(t, err)
+		require.NotEmpty(t, data, "expected non-empty audio data")
+		t.Logf("streamed %d bytes for song %q", len(data), songs[0].Title)
+	})
 }

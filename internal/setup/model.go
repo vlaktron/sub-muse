@@ -1,6 +1,10 @@
 package setup
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
 	"sub-muse/internal/config"
 	"sub-muse/internal/keyring"
 	"sub-muse/internal/subsonic"
@@ -10,6 +14,14 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+type SongInfo struct {
+	ID       string
+	Title    string
+	Artist   string
+	Album    string
+	Duration int
+}
 
 type Step int
 
@@ -34,6 +46,13 @@ type saveResult struct {
 	Error   error
 }
 
+type songPlayResult struct {
+	Success   bool
+	Error     error
+	Song      *SongInfo
+	AudioData []byte
+}
+
 type Model struct {
 	step      Step
 	serverURL textinput.Model
@@ -42,9 +61,22 @@ type Model struct {
 	spinner   spinner.Model
 	errorMsg  string
 	focused   int
+
+	playingSong *SongInfo
+	errorSong   string
+	playCtx     context.Context
+	playCancel  context.CancelFunc
 }
 
 func NewModel() Model {
+	return NewModelWithConfig(nil)
+}
+
+func NewPlayerModel(cfg *config.Config) Model {
+	return NewModelWithConfig(cfg)
+}
+
+func NewModelWithConfig(cfg *config.Config) Model {
 	serverURL := textinput.New()
 	serverURL.Placeholder = "http://localhost:4040"
 	serverURL.Focus()
@@ -99,8 +131,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			mm, cmd := m.handleEnter()
 			return mm, cmd
 		case tea.KeyCtrlC:
+			if m.playCancel != nil {
+				m.playCancel()
+			}
 			return m, tea.Quit
 		}
+	case tea.QuitMsg:
+		if m.playCancel != nil {
+			m.playCancel()
+		}
+		return m, tea.Quit
 	case connectionTestResult:
 		if msg.Success {
 			m.step = StepSaving
@@ -114,6 +154,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.step = StepError
 			m.errorMsg = "Failed to save configuration: " + msg.Error.Error()
+		}
+	case songPlayResult:
+		if msg.Success && msg.Song != nil {
+			m.playingSong = msg.Song
+			m.errorSong = ""
+		} else {
+			m.errorSong = "Failed to play song: " + msg.Error.Error()
 		}
 	}
 
@@ -150,7 +197,7 @@ func (m Model) handleEnter() (tea.Model, tea.Cmd) {
 		m.step = StepPassword
 		m.password.Focus()
 	case StepDone:
-		return m, tea.Quit
+		return m, m.playRandomSong()
 	}
 	return m, nil
 }
@@ -194,6 +241,79 @@ func (m Model) saveConfig() tea.Cmd {
 	}
 }
 
+func (m Model) playRandomSong() tea.Cmd {
+	ctx, cancel := context.WithCancel(context.Background())
+	m2 := m
+	m2.playCtx = ctx
+	m2.playCancel = cancel
+
+	return func() tea.Msg {
+		client := subsonic.NewClient(
+			m2.serverURL.Value(),
+			m2.username.Value(),
+			m2.password.Value(),
+			"sub-muse",
+		)
+
+		songs, err := client.GetSongs()
+		if err != nil {
+			return songPlayResult{Success: false, Error: err}
+		}
+
+		if len(songs) == 0 {
+			return songPlayResult{Success: false, Error: fmt.Errorf("no songs found")}
+		}
+
+		song := songs[0]
+		audioData, err := client.Stream(subsonic.WithID(song.ID))
+		if err != nil {
+			return songPlayResult{Success: false, Error: err}
+		}
+
+		err = playAudioAsync(ctx, audioData)
+		if err != nil {
+			return songPlayResult{Success: false, Error: err}
+		}
+
+		return songPlayResult{
+			Success: true,
+			Song: &SongInfo{
+				ID:       song.ID,
+				Title:    song.Title,
+				Artist:   song.Artist,
+				Album:    song.Album,
+				Duration: song.Duration,
+			},
+			AudioData: audioData,
+		}
+	}
+}
+
+func playAudioAsync(ctx context.Context, data []byte) error {
+	ext := ".wav"
+	if len(data) > 4 && string(data[:4]) != "RIFF" {
+		ext = ".ogg"
+	}
+
+	tmpFile, err := os.CreateTemp("", "sub-muse-*"+ext)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmpFile.Name())
+
+	_, err = tmpFile.Write(data)
+	if err != nil {
+		return err
+	}
+	tmpFile.Close()
+
+	cmd := exec.CommandContext(ctx, "ffplay", "-nodisp", "-autoexit", tmpFile.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	return cmd.Run()
+}
+
 func (m Model) View() string {
 	switch m.step {
 	case StepWelcome:
@@ -213,6 +333,11 @@ func (m Model) View() string {
 	case StepError:
 		return m.viewError()
 	}
+
+	if m.playingSong != nil {
+		return m.viewPlayer()
+	}
+
 	return ""
 }
 
@@ -269,7 +394,27 @@ func (m Model) viewDone() string {
 	return lipgloss.JoinVertical(lipgloss.Center,
 		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).Foreground(lipgloss.Color("#00C853")).Render(title),
 		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).Render(content),
-		"\n[ Enter to continue ]",
+		"\n[ Enter to start playing music ]",
+	)
+}
+
+func (m Model) viewPlayer() string {
+	song := m.playingSong
+	title := "🎵 Now Playing"
+	info := fmt.Sprintf("%s\n%s", song.Title, song.Artist)
+	album := fmt.Sprintf("Album: %s", song.Album)
+	status := "[ Playing... ]"
+
+	if m.errorSong != "" {
+		status = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF5370")).Render("✗ " + m.errorSong)
+	}
+
+	return lipgloss.JoinVertical(lipgloss.Center,
+		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).Render(title),
+		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).MarginTop(1).Render(info),
+		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).MarginTop(0).Render(album),
+		lipgloss.NewStyle().Width(60).Align(lipgloss.Center).MarginTop(1).Render(status),
+		"\n[ Ctrl+C to quit ]",
 	)
 }
 
