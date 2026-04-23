@@ -231,3 +231,141 @@ func TestGenerateSalt_Length(t *testing.T) {
 
 	require.Equal(t, 18, len(salt))
 }
+
+func TestClient_buildRequestWithValues_SingleValue(t *testing.T) {
+	client := NewClient("http://example.com/", "testuser", "testpass", "testclient")
+
+	params := url.Values{}
+	params.Add("id", "42")
+
+	url, err := client.buildRequestWithValues("test", params)
+	require.NoError(t, err)
+	require.Contains(t, url, "id=42")
+}
+
+func TestClient_buildRequestWithValues_MultiValue(t *testing.T) {
+	client := NewClient("http://example.com/", "testuser", "testpass", "testclient")
+
+	params := url.Values{}
+	params.Add("id", "1")
+	params.Add("id", "2")
+	params.Add("id", "3")
+
+	url, err := client.buildRequestWithValues("test", params)
+	require.NoError(t, err)
+
+	require.Contains(t, url, "id=1")
+	require.Contains(t, url, "id=2")
+	require.Contains(t, url, "id=3")
+}
+
+func TestClient_buildRequestWithValues_NilParams(t *testing.T) {
+	client := NewClient("http://example.com/", "testuser", "testpass", "testclient")
+
+	url, err := client.buildRequestWithValues("test", nil)
+	require.NoError(t, err)
+	require.Contains(t, url, "u=testuser")
+	require.Contains(t, url, "p=testpass")
+	require.Contains(t, url, "v=1.16.1")
+	require.Contains(t, url, "c=testclient")
+	require.Contains(t, url, "f=json")
+}
+
+func TestClient_buildRequestWithValues_Error(t *testing.T) {
+	client := &Client{
+		baseURL:    ":invalid",
+		username:   "testuser",
+		password:   "testpass",
+		clientName: "testclient",
+	}
+
+	_, err := client.buildRequestWithValues("test", nil)
+	require.Error(t, err)
+}
+
+func TestClient_sendRequestWithValues_Success(t *testing.T) {
+	mockJSON := `{
+		"subsonic-response": {
+			"status": "ok",
+			"artists": {
+				"index": [
+					{
+						"name": "A",
+						"artist": [
+							{
+								"id": "1",
+								"name": "Artist 1",
+								"albumCount": 5,
+								"coverArt": "1"
+							}
+						]
+					}
+				]
+			}
+		}
+	}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	params := url.Values{}
+	params.Add("id", "1")
+
+	var response struct {
+		Status  string `json:"status"`
+		Artists struct {
+			Index []struct {
+				Artist []Artist `json:"artist"`
+			} `json:"index"`
+		} `json:"artists"`
+	}
+
+	err := client.sendRequestWithValues("getArtists", params, &response)
+	require.NoError(t, err)
+	require.Len(t, response.Artists.Index, 1)
+	require.Len(t, response.Artists.Index[0].Artist, 1)
+	require.Equal(t, "Artist 1", response.Artists.Index[0].Artist[0].Name)
+}
+
+func TestClient_sendRequestWithValues_HTTPError(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusUnauthorized,
+					Status:     "401 Unauthorized",
+					Body:       io.NopCloser(bytes.NewReader([]byte("Unauthorized"))),
+				}, nil
+			},
+		},
+	}
+
+	params := url.Values{}
+	params.Add("id", "1")
+
+	err := client.sendRequestWithValues("getArtists", params, nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 401")
+}
+
+func TestClient_buildRequestWithValues_TokenAuth(t *testing.T) {
+	client := NewClientWithTokenAuth("http://example.com/", "testuser", "testpass", "testclient")
+
+	params := url.Values{}
+	params.Add("id", "42")
+
+	url, err := client.buildRequestWithValues("test", params)
+	require.NoError(t, err)
+	require.Contains(t, url, "t=")
+	require.Contains(t, url, "s=")
+	require.NotContains(t, url, "p=")
+	require.Contains(t, url, "id=42")
+}
