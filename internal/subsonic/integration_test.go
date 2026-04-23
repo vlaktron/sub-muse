@@ -18,7 +18,12 @@ func TestIntegration(t *testing.T) {
 		t.Skip("set TEST_INTEGRATION=1 to run integration tests")
 	}
 
-	client := NewClient(testBaseURL, testUsername, testPassword, testClientName)
+	clientName := testClientName
+	if clientName == "" {
+		clientName = "sub-muse-test"
+	}
+
+	client := NewClient(testBaseURL, testUsername, testPassword, clientName)
 
 	t.Run("Ping", func(t *testing.T) {
 		err := client.Ping()
