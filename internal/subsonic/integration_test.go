@@ -92,4 +92,10 @@ func TestIntegration(t *testing.T) {
 		require.NotEmpty(t, data, "expected non-empty audio data")
 		t.Logf("streamed %d bytes for song %q", len(data), songs[0].Title)
 	})
+
+	t.Run("TokenAuth", func(t *testing.T) {
+		tokenClient := NewClientWithTokenAuth(testBaseURL, testUsername, testPassword, clientName)
+		err := tokenClient.Ping()
+		require.NoError(t, err, "token auth ping should succeed")
+	})
 }
