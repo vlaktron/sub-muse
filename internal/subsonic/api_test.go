@@ -495,3 +495,109 @@ func TestGetMusicFolders_VerifyParams(t *testing.T) {
 	require.Contains(t, capturedURL, "getMusicFolders")
 	require.Contains(t, capturedURL, "f=json")
 }
+
+func TestGetAlbum_Success(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","album":{"id":"1","name":"Album 1","artist":"Artist 1","artistId":"a1","songCount":0,"duration":0,"coverArt":"1"}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	album, err := client.GetAlbum("1")
+	require.NoError(t, err)
+	require.Equal(t, "Album 1", album.Name)
+	require.Nil(t, album.Starred)
+	require.Empty(t, album.Songs)
+}
+
+func TestGetAlbum_WithSongs(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","album":{"id":"1","name":"Album 1","artist":"Artist 1","song":[{"id":"s1","title":"Track 1"},{"id":"s2","title":"Track 2"}]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	album, err := client.GetAlbum("1")
+	require.NoError(t, err)
+	require.Len(t, album.Songs, 2)
+	require.Equal(t, "Track 1", album.Songs[0].Title)
+	require.Equal(t, "Track 2", album.Songs[1].Title)
+}
+
+func TestGetAlbum_Starred(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","album":{"id":"1","name":"Album 1","starred":"2024-01-15T10:30:00Z"}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	album, err := client.GetAlbum("1")
+	require.NoError(t, err)
+	require.NotNil(t, album.Starred)
+	require.Equal(t, 2024, album.Starred.Year())
+}
+
+func TestGetAlbum_ServerError(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusInternalServerError,
+					Status:     "500 Internal Server Error",
+					Body:       io.NopCloser(bytes.NewReader([]byte("error"))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetAlbum("1")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 500")
+}
+
+func TestGetAlbum_VerifyParams(t *testing.T) {
+	var capturedURL string
+	mockJSON := `{"subsonic-response":{"status":"ok","album":{"id":"42","name":"Test Album"}}}`
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetAlbum("42")
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "id=42")
+	require.Contains(t, capturedURL, "f=json")
+}
