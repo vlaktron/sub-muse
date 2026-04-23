@@ -601,3 +601,133 @@ func TestGetAlbum_VerifyParams(t *testing.T) {
 	require.Contains(t, capturedURL, "id=42")
 	require.Contains(t, capturedURL, "f=json")
 }
+
+func TestGetPlaylists_Success(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","playlists":{"playlist":[{"id":"1","name":"My Playlist","songCount":5,"duration":180,"coverArt":"123"},{"id":"2","name":"Favorites","songCount":10,"duration":360}]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	playlists, err := client.GetPlaylists()
+	require.NoError(t, err)
+	require.Len(t, playlists, 2)
+	require.Equal(t, "My Playlist", playlists[0].Name)
+	require.Equal(t, "Favorites", playlists[1].Name)
+}
+
+func TestGetPlaylists_Empty(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","playlists":{"playlist":[]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	playlists, err := client.GetPlaylists()
+	require.NoError(t, err)
+	require.Empty(t, playlists)
+}
+
+func TestGetPlaylist_Success(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","playlist":{"id":"123","name":"Test Playlist","songCount":3,"duration":200,"coverArt":"456","genre":"Rock","entry":[{"id":"s1","title":"Track 1"},{"id":"s2","title":"Track 2"}]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	playlist, err := client.GetPlaylist("123")
+	require.NoError(t, err)
+	require.Equal(t, "Test Playlist", playlist.Name)
+	require.Equal(t, "Rock", playlist.Genre)
+	require.Len(t, playlist.Songs, 2)
+}
+
+func TestGetPlaylist_NotFound(t *testing.T) {
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusNotFound,
+					Status:     "404 Not Found",
+					Body:       io.NopCloser(bytes.NewReader([]byte("not found"))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetPlaylist("999")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HTTP 404")
+}
+
+func TestGetPlaylists_VerifyParams(t *testing.T) {
+	var capturedURL string
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(`{"subsonic-response":{"status":"ok","playlists":{"playlist":[]}}}`))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetPlaylists()
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "getPlaylists")
+	require.Contains(t, capturedURL, "f=json")
+}
+
+func TestGetPlaylist_VerifyParams(t *testing.T) {
+	var capturedURL string
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(`{"subsonic-response":{"status":"ok","playlist":{"id":"1","name":"Test"}}}`))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetPlaylist("42")
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "getPlaylist")
+	require.Contains(t, capturedURL, "id=42")
+	require.Contains(t, capturedURL, "f=json")
+}
