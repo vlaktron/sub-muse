@@ -18,6 +18,12 @@ var (
 	testClientName = os.Getenv("TEST_SUBSONIC_CLIENT_NAME")
 )
 
+func init() {
+	if testClientName == "" {
+		testClientName = "sub-muse-test"
+	}
+}
+
 func TestNewClient_Success(t *testing.T) {
 	client := NewClient(testBaseURL, testUsername, testPassword, testClientName)
 

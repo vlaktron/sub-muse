@@ -427,3 +427,71 @@ func TestStream_ServerError(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "HTTP 500")
 }
+
+func TestGetMusicFolders_Success(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","musicFolders":{"musicFolder":[{"id":1,"name":"music"},{"id":4,"name":"upload"}]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	folders, err := client.GetMusicFolders()
+	require.NoError(t, err)
+	require.Len(t, folders, 2)
+	require.Equal(t, 1, folders[0].ID)
+	require.Equal(t, "music", folders[0].Name)
+	require.Equal(t, 4, folders[1].ID)
+	require.Equal(t, "upload", folders[1].Name)
+}
+
+func TestGetMusicFolders_Empty(t *testing.T) {
+	mockJSON := `{"subsonic-response":{"status":"ok","musicFolders":{"musicFolder":[]}}}`
+
+	client := &Client{
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	folders, err := client.GetMusicFolders()
+	require.NoError(t, err)
+	require.Empty(t, folders)
+}
+
+func TestGetMusicFolders_VerifyParams(t *testing.T) {
+	var capturedURL string
+	mockJSON := `{"subsonic-response":{"status":"ok","musicFolders":{"musicFolder":[]}}}`
+
+	client := &Client{
+		baseURL:    "http://example.com",
+		username:   "user",
+		password:   "pass",
+		clientName: "test",
+		httpClient: &mockHTTPClient{
+			doFunc: func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader([]byte(mockJSON))),
+				}, nil
+			},
+		},
+	}
+
+	_, err := client.GetMusicFolders()
+	require.NoError(t, err)
+	require.Contains(t, capturedURL, "getMusicFolders")
+	require.Contains(t, capturedURL, "f=json")
+}
