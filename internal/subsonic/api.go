@@ -108,6 +108,34 @@ func (c *Client) GetSongs() ([]Song, error) {
 	return envelope.RandomSongs.Song, nil
 }
 
+// GetPlaylists gets the list of playlists
+func (c *Client) GetPlaylists() ([]Playlist, error) {
+	var envelope struct {
+		Playlists struct {
+			Playlist []Playlist `json:"playlist"`
+		} `json:"playlists"`
+	}
+
+	if err := c.sendRequest("getPlaylists", nil, &envelope); err != nil {
+		return nil, err
+	}
+
+	return envelope.Playlists.Playlist, nil
+}
+
+// GetPlaylist gets a specific playlist by ID
+func (c *Client) GetPlaylist(id string) (*Playlist, error) {
+	var envelope struct {
+		Playlist Playlist `json:"playlist"`
+	}
+
+	if err := c.sendRequest("getPlaylist", map[string]string{"id": id}, &envelope); err != nil {
+		return nil, err
+	}
+
+	return &envelope.Playlist, nil
+}
+
 // GetCoverArt gets cover art for an album
 func (c *Client) GetCoverArt(coverArtID string, size int) ([]byte, error) {
 	params := map[string]string{

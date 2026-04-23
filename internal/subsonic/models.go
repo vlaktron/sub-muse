@@ -27,6 +27,7 @@ type Song struct {
 	Duration    int    `json:"duration"`
 	Track       int    `json:"track"`
 	Year        int    `json:"year"`
+	Genre       string `json:"genre"`
 	CoverArtID  string `json:"coverArt"`
 	Size        int64  `json:"size"`
 	BitRate     int    `json:"bitRate"`
@@ -73,4 +74,13 @@ type Child struct {
 	ContentType string `json:"contentType"`
 	Suffix      string `json:"suffix"`
 	IsDir       bool   `json:"isDir"`
+}
+
+type Playlist struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	SongCount  int    `json:"songCount"`
+	Duration   int    `json:"duration"`
+	CoverArtID string `json:"coverArt"`
+	Songs      []Song `json:"entry"`
 }
