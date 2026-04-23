@@ -2,9 +2,12 @@ package subsonic
 
 import (
 	"bytes"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"testing"
 
@@ -161,4 +164,70 @@ func TestClient_sendRequest_RequestError(t *testing.T) {
 	err := client.sendRequest("getArtists", nil, nil)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "network error")
+}
+
+func TestClient_buildRequest_TokenAuth_HasTokenAndSalt(t *testing.T) {
+	client := NewClientWithTokenAuth("http://example.com/", "testuser", "testpass", "testclient")
+
+	url, err := client.buildRequest("test", nil)
+	require.NoError(t, err)
+	require.Contains(t, url, "t=")
+	require.Contains(t, url, "s=")
+	require.NotContains(t, url, "p=")
+}
+
+func TestClient_buildRequest_TokenAuth_NoPassword(t *testing.T) {
+	client := NewClientWithTokenAuth("http://example.com/", "testuser", "testpass", "testclient")
+
+	url, err := client.buildRequest("test", nil)
+	require.NoError(t, err)
+	require.NotContains(t, url, "p=testpass")
+}
+
+func TestClient_buildRequest_TokenAuth_ValidMD5(t *testing.T) {
+	client := NewClientWithTokenAuth("http://example.com/", "testuser", "testpass", "testclient")
+
+	urlStr, err := client.buildRequest("test", nil)
+	require.NoError(t, err)
+
+	require.Contains(t, urlStr, "t=")
+	require.Contains(t, urlStr, "s=")
+
+	query, err := url.ParseQuery(urlStr)
+	require.NoError(t, err)
+
+	token := query.Get("t")
+	salt := query.Get("s")
+
+	expectedToken := md5.Sum([]byte("testpass" + salt))
+	expectedTokenHex := hex.EncodeToString(expectedToken[:])
+
+	require.Equal(t, expectedTokenHex, token)
+}
+
+func TestClient_buildRequest_PasswordMode_Default(t *testing.T) {
+	client := NewClient("http://example.com/", "testuser", "testpass!", "testclient")
+
+	url, err := client.buildRequest("test", nil)
+	require.NoError(t, err)
+	require.Contains(t, url, "p=testpass%21")
+	require.NotContains(t, url, "t=")
+	require.NotContains(t, url, "s=")
+}
+
+func TestGenerateSalt_Uniqueness(t *testing.T) {
+	salt1, err := generateSalt()
+	require.NoError(t, err)
+
+	salt2, err := generateSalt()
+	require.NoError(t, err)
+
+	require.NotEqual(t, salt1, salt2)
+}
+
+func TestGenerateSalt_Length(t *testing.T) {
+	salt, err := generateSalt()
+	require.NoError(t, err)
+
+	require.Equal(t, 18, len(salt))
 }

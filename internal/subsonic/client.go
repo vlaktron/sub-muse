@@ -1,6 +1,9 @@
 package subsonic
 
 import (
+	"crypto/md5"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,11 +16,19 @@ type HTTPClient interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
+type AuthMode int
+
+const (
+	AuthPassword AuthMode = iota
+	AuthToken
+)
+
 type Client struct {
 	baseURL    string
 	username   string
 	password   string
 	clientName string
+	authMode   AuthMode
 	httpClient HTTPClient
 }
 
@@ -27,10 +38,17 @@ func NewClient(baseURL, username, password, clientName string) *Client {
 		username:   username,
 		password:   password,
 		clientName: clientName,
+		authMode:   AuthPassword,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+func NewClientWithTokenAuth(baseURL, username, password, clientName string) *Client {
+	c := NewClient(baseURL, username, password, clientName)
+	c.authMode = AuthToken
+	return c
 }
 
 func (c *Client) buildRequest(endpoint string, params map[string]string) (string, error) {
@@ -43,7 +61,20 @@ func (c *Client) buildRequest(endpoint string, params map[string]string) (string
 
 	query := u.Query()
 	query.Set("u", c.username)
-	query.Set("p", c.password)
+
+	switch c.authMode {
+	case AuthToken:
+		salt, err := generateSalt()
+		if err != nil {
+			return "", err
+		}
+		hash := md5.Sum([]byte(c.password + salt))
+		query.Set("t", hex.EncodeToString(hash[:]))
+		query.Set("s", salt)
+	default:
+		query.Set("p", c.password)
+	}
+
 	query.Set("v", "1.16.1")
 	query.Set("c", c.clientName)
 	query.Set("f", "json")
@@ -54,6 +85,14 @@ func (c *Client) buildRequest(endpoint string, params map[string]string) (string
 
 	u.RawQuery = query.Encode()
 	return u.String(), nil
+}
+
+func generateSalt() (string, error) {
+	b := make([]byte, 9)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func (c *Client) sendRequest(endpoint string, params map[string]string, result interface{}) error {
