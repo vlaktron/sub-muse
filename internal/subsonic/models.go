@@ -82,5 +82,6 @@ type Playlist struct {
 	SongCount  int    `json:"songCount"`
 	Duration   int    `json:"duration"`
 	CoverArtID string `json:"coverArt"`
+	Genre      string `json:"genre,omitempty"`
 	Songs      []Song `json:"entry"`
 }
