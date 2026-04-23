@@ -1,5 +1,7 @@
 package subsonic
 
+import "time"
+
 type SubsonicResponse struct {
 	Status string `json:"status"`
 	Error  *Error `json:"error,omitempty"`
@@ -33,16 +35,16 @@ type Song struct {
 }
 
 type Album struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Artist     string `json:"artist"`
-	ArtistID   string `json:"artistId"`
-	SongCount  int    `json:"songCount"`
-	Duration   int    `json:"duration"`
-	CoverArtID string `json:"coverArt"`
-	Year       int    `json:"year"`
-	Starred    string `json:"starred"`
-	Songs      []Song `json:"song,omitempty"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Artist     string     `json:"artist"`
+	ArtistID   string     `json:"artistId"`
+	SongCount  int        `json:"songCount"`
+	Duration   int        `json:"duration"`
+	CoverArtID string     `json:"coverArt"`
+	Year       int        `json:"year"`
+	Starred    *time.Time `json:"starred,omitempty"`
+	Songs      []Song     `json:"song,omitempty"`
 }
 
 type Artist struct {
