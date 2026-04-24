@@ -73,6 +73,9 @@ func (p *PlayerBar) renderMinimal(width int) string {
 }
 
 func truncateString(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
 	if len(s) <= maxWidth {
 		return s
 	}
