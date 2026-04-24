@@ -40,7 +40,12 @@ func NewModel(cfg *config.Config, colors theme.Colors) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return nil
+	return tea.Batch(
+		loadSongsCmd(m.client),
+		loadArtistsCmd(m.client),
+		loadAlbumsCmd(m.client),
+		loadPlaylistsCmd(m.client),
+	)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -52,6 +57,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		}
+	case songsLoadedMsg:
+		if msg.err == nil {
+			m.songs = msg.songs
+		}
+	case artistsLoadedMsg:
+		if msg.err == nil {
+			m.artists = msg.artists
+		}
+	case albumsLoadedMsg:
+		if msg.err == nil {
+			m.albums = msg.albums
+		}
+	case playlistsLoadedMsg:
+		if msg.err == nil {
+			m.playlists = msg.playlists
 		}
 	}
 	return m, nil
