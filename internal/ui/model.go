@@ -2,8 +2,10 @@ package ui
 
 import (
 	"fmt"
+	"time"
 
 	"sub-muse/internal/config"
+	"sub-muse/internal/player"
 	"sub-muse/internal/subsonic"
 	"sub-muse/internal/theme"
 
@@ -31,6 +33,12 @@ type Model struct {
 	selectedArtist *subsonic.Artist
 
 	browser *Browser
+
+	player     *player.Player
+	nowPlaying *subsonic.Song
+	queue      []subsonic.Song
+	queuePos   int
+	elapsed    time.Duration
 }
 
 func NewModel(cfg *config.Config, colors theme.Colors) Model {
@@ -46,6 +54,7 @@ func NewModel(cfg *config.Config, colors theme.Colors) Model {
 			ScrollOffset:  0,
 			Styles:        NewStyles(colors.Accent),
 		},
+		player: player.NewPlayer(),
 	}
 }
 
@@ -55,6 +64,7 @@ func (m Model) Init() tea.Cmd {
 		loadArtistsCmd(m.client),
 		loadAlbumsCmd(m.client),
 		loadPlaylistsCmd(m.client),
+		m.playerTickCmd(),
 	)
 }
 
@@ -94,7 +104,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selectedArtist = msg.artist
 		}
 	case playbackStartedMsg:
-		m.selectedSong = &msg.song
+		m.nowPlaying = &msg.song
+		m.queue = []subsonic.Song{msg.song}
+		m.queuePos = 0
+	case playbackTickMsg:
+		m.elapsed = m.player.GetState().Elapsed
+	case playbackStoppedMsg:
+		m.nowPlaying = nil
+		m.elapsed = 0
+	case playbackErrorMsg:
+		m.nowPlaying = nil
+		m.elapsed = 0
 	}
 	return m, nil
 }
@@ -135,6 +155,14 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "enter":
 		return m.handleEnterKey()
+	case " ", "p":
+		return m.handlePlayPause()
+	case "n":
+		return m.handleNext()
+	case "N":
+		return m.handlePrev()
+	case "s":
+		return m.handleStop()
 	}
 	return m, nil
 }
@@ -246,6 +274,52 @@ func (m Model) findSongIndex(song subsonic.Song) int {
 	return 0
 }
 
+func (m Model) playerTickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return playbackTickMsg{}
+	})
+}
+
+func (m Model) handlePlayPause() (tea.Model, tea.Cmd) {
+	if m.nowPlaying == nil {
+		if len(m.queue) > 0 {
+			song := m.queue[m.queuePos]
+			return m, playSongCmd(m.client, song)
+		}
+		return m, nil
+	}
+
+	state := m.player.GetState()
+	if state.IsPlaying {
+		return m, stopSongCmd()
+	}
+	return m, nil
+}
+
+func (m Model) handleNext() (tea.Model, tea.Cmd) {
+	if len(m.queue) == 0 {
+		return m, nil
+	}
+
+	m.queuePos = (m.queuePos + 1) % len(m.queue)
+	song := m.queue[m.queuePos]
+	return m, playSongCmd(m.client, song)
+}
+
+func (m Model) handlePrev() (tea.Model, tea.Cmd) {
+	if len(m.queue) == 0 {
+		return m, nil
+	}
+
+	m.queuePos = (m.queuePos - 1 + len(m.queue)) % len(m.queue)
+	song := m.queue[m.queuePos]
+	return m, playSongCmd(m.client, song)
+}
+
+func (m Model) handleStop() (tea.Model, tea.Cmd) {
+	return m, stopSongCmd()
+}
+
 func (m Model) View() string {
 	statusBar := m.renderStatusBar()
 	contentRow := m.renderContentRow()
@@ -331,14 +405,39 @@ func (m Model) renderArtistInfo() string {
 }
 
 func (m Model) renderPlayerBar() string {
+	if m.nowPlaying == nil {
+		playerBar := &PlayerBar{
+			Progress:    0.0,
+			CurrentTime: 0,
+			Duration:    0,
+			Playing:     false,
+			SongTitle:   "No song playing",
+			Artist:      "",
+			Album:       "",
+			Styles:      m.styles,
+		}
+
+		return playerBar.Render(m.width)
+	}
+
+	song := *m.nowPlaying
+	state := m.player.GetState()
+	elapsed := int(state.Elapsed.Seconds())
+	duration := song.Duration
+
+	var progress float64
+	if duration > 0 {
+		progress = float64(elapsed) / float64(duration)
+	}
+
 	playerBar := &PlayerBar{
-		Progress:    0.0,
-		CurrentTime: 0,
-		Duration:    0,
-		Playing:     false,
-		SongTitle:   "No song playing",
-		Artist:      "",
-		Album:       "",
+		Progress:    progress,
+		CurrentTime: elapsed,
+		Duration:    duration,
+		Playing:     state.IsPlaying,
+		SongTitle:   song.Title,
+		Artist:      song.Artist,
+		Album:       song.Album,
 		Styles:      m.styles,
 	}
 
