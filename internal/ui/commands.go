@@ -53,3 +53,9 @@ func playSongCmd(client *subsonic.Client, song subsonic.Song) tea.Cmd {
 		return playbackStartedMsg{song: song}
 	}
 }
+
+func stopSongCmd() tea.Cmd {
+	return func() tea.Msg {
+		return playbackStoppedMsg{}
+	}
+}
