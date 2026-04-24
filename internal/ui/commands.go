@@ -59,3 +59,18 @@ func stopSongCmd() tea.Cmd {
 		return playbackStoppedMsg{}
 	}
 }
+
+func loadCoverArtCmd(client *subsonic.Client, coverArtID string) tea.Cmd {
+	return func() tea.Msg {
+		data, err := client.GetCoverArt(coverArtID, 0)
+		return coverArtLoadedMsg{id: coverArtID, data: data, err: err}
+	}
+}
+
+func renderCoverArtCmd(imgData []byte, width, height int) tea.Cmd {
+	return func() tea.Msg {
+		renderer := NewCoverArtRenderer()
+		rendered, _ := renderer.Render(imgData, width, height)
+		return coverArtRenderedMsg{rendered: rendered}
+	}
+}

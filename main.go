@@ -1,15 +1,14 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 
 	"sub-muse/internal/config"
 	"sub-muse/internal/setup"
-	"sub-muse/internal/subsonic"
+	"sub-muse/internal/theme"
+	"sub-muse/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -53,68 +52,19 @@ func main() {
 		return
 	}
 
-	fmt.Println("DEBUG: After check - starting player")
+	fmt.Println("DEBUG: After check - launching TUI")
 
 	cfg, err = config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	fmt.Printf("Sub-muse - TUI Music Streaming Client\n")
-	fmt.Printf("Configured for: %s\n", cfg.ServerURL)
-	fmt.Printf("Password: %s\n", cfg.Password)
-	fmt.Println("Starting music playback...")
-
-	// Start playing music directly without TUI
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		client := subsonic.NewClient(cfg.ServerURL, cfg.Username, cfg.Password, cfg.ClientName)
-		songs, err := client.GetSongs()
-		if err != nil {
-			log.Fatalf("Failed to get songs: %v", err)
-		}
-
-		if len(songs) == 0 {
-			log.Fatalf("No songs found")
-		}
-
-		song := songs[0]
-		audioData, err := client.Stream(subsonic.WithID(song.ID))
-		if err != nil {
-			log.Fatalf("Failed to stream: %v", err)
-		}
-
-		// Play audio
-		ext := ".wav"
-		if len(audioData) > 4 && string(audioData[:4]) != "RIFF" {
-			ext = ".ogg"
-		}
-
-		tmpFile, err := os.CreateTemp("", "sub-muse-*"+ext)
-		if err != nil {
-			log.Fatalf("Failed to create temp file: %v", err)
-		}
-		defer os.Remove(tmpFile.Name())
-
-		_, err = tmpFile.Write(audioData)
-		if err != nil {
-			log.Fatalf("Failed to write temp file: %v", err)
-		}
-		tmpFile.Close()
-
-		cmd := exec.CommandContext(ctx, "ffplay", "-nodisp", "-autoexit", tmpFile.Name())
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			log.Fatalf("Failed to play audio: %v", err)
-		}
-	}()
-
-	// Wait for Ctrl+C
-	select {}
+	colors := theme.LoadOrDefault()
+	model := ui.NewModel(cfg, colors)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if _, err := p.Run(); err != nil {
+		log.Fatalf("Error running TUI: %v", err)
+	}
 }
 
 func runSetupWizard() {
@@ -131,53 +81,12 @@ func runSetupWizard() {
 	fmt.Printf("Sub-muse - TUI Music Streaming Client\n")
 	fmt.Printf("Configured for: %s\n", cfg.ServerURL)
 	fmt.Printf("Password: %s\n", cfg.Password)
-	fmt.Println("Setup complete! Starting application...")
+	fmt.Println("Setup complete! Launching application...")
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		client := subsonic.NewClient(cfg.ServerURL, cfg.Username, cfg.Password, cfg.ClientName)
-		songs, err := client.GetSongs()
-		if err != nil {
-			log.Fatalf("Failed to get songs: %v", err)
-		}
-
-		if len(songs) == 0 {
-			log.Fatalf("No songs found")
-		}
-
-		song := songs[0]
-		audioData, err := client.Stream(subsonic.WithID(song.ID))
-		if err != nil {
-			log.Fatalf("Failed to stream: %v", err)
-		}
-
-		ext := ".wav"
-		if len(audioData) > 4 && string(audioData[:4]) != "RIFF" {
-			ext = ".ogg"
-		}
-
-		tmpFile, err := os.CreateTemp("", "sub-muse-*"+ext)
-		if err != nil {
-			log.Fatalf("Failed to create temp file: %v", err)
-		}
-		defer os.Remove(tmpFile.Name())
-
-		_, err = tmpFile.Write(audioData)
-		if err != nil {
-			log.Fatalf("Failed to write temp file: %v", err)
-		}
-		tmpFile.Close()
-
-		cmd := exec.CommandContext(ctx, "ffplay", "-nodisp", "-autoexit", tmpFile.Name())
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		err = cmd.Run()
-		if err != nil {
-			log.Fatalf("Failed to play audio: %v", err)
-		}
-	}()
-
-	select {}
+	colors := theme.LoadOrDefault()
+	model := ui.NewModel(cfg, colors)
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	if _, err := p.Run(); err != nil {
+		log.Fatalf("Error running TUI: %v", err)
+	}
 }

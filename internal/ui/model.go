@@ -39,6 +39,9 @@ type Model struct {
 	queue      []subsonic.Song
 	queuePos   int
 	elapsed    time.Duration
+
+	coverArtCache map[string]string
+	errorMsg      string
 }
 
 func NewModel(cfg *config.Config, colors theme.Colors) Model {
@@ -54,7 +57,8 @@ func NewModel(cfg *config.Config, colors theme.Colors) Model {
 			ScrollOffset:  0,
 			Styles:        NewStyles(colors.Accent),
 		},
-		player: player.NewPlayer(),
+		player:        player.NewPlayer(),
+		coverArtCache: make(map[string]string),
 	}
 }
 
@@ -73,27 +77,52 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		return m, nil
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
 	case songsLoadedMsg:
-		if msg.err == nil {
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+		} else {
 			m.songs = msg.songs
 			m.updateBrowserForTab()
 		}
 	case artistsLoadedMsg:
-		if msg.err == nil {
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+		} else {
 			m.artists = msg.artists
 			m.updateBrowserForTab()
 		}
 	case albumsLoadedMsg:
-		if msg.err == nil {
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+		} else {
 			m.albums = msg.albums
 			m.updateBrowserForTab()
+			if m.selectedAlbum != nil && m.selectedAlbum.CoverArtID != "" {
+				return m, loadCoverArtCmd(m.client, m.selectedAlbum.CoverArtID)
+			}
 		}
 	case playlistsLoadedMsg:
-		if msg.err == nil {
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+		} else {
 			m.playlists = msg.playlists
 			m.updateBrowserForTab()
+		}
+	case coverArtLoadedMsg:
+		if msg.err != nil {
+			m.errorMsg = msg.err.Error()
+		} else if msg.id != "" {
+			m.coverArtCache[msg.id] = string(msg.data)
+			return m, renderCoverArtCmd(msg.data, 200, 200)
+		}
+	case coverArtRenderedMsg:
+		if m.selectedAlbum != nil && m.selectedAlbum.CoverArtID != "" {
+			if rendered, ok := m.coverArtCache[m.selectedAlbum.CoverArtID]; ok {
+				m.selectedAlbum.CoverArtID = rendered
+			}
 		}
 	case albumDetailMsg:
 		if msg.err == nil && msg.album != nil {
@@ -254,10 +283,22 @@ func (m Model) formatPlaylistsForTable() [][]string {
 
 func (m Model) handleEnterKey() (tea.Model, tea.Cmd) {
 	if m.activeTab == TabAlbums && m.selectedAlbum != nil {
-		return m, loadAlbumDetailCmd(m.client, m.selectedAlbum.ID)
+		cmds := []tea.Cmd{
+			loadAlbumDetailCmd(m.client, m.selectedAlbum.ID),
+		}
+		if m.selectedAlbum.CoverArtID != "" {
+			cmds = append(cmds, loadCoverArtCmd(m.client, m.selectedAlbum.CoverArtID))
+		}
+		return m, tea.Batch(cmds...)
 	}
 	if m.activeTab == TabArtists && m.selectedArtist != nil {
-		return m, loadArtistDetailCmd(m.client, m.selectedArtist.ID)
+		cmds := []tea.Cmd{
+			loadArtistDetailCmd(m.client, m.selectedArtist.ID),
+		}
+		if m.selectedArtist.CoverArtID != "" {
+			cmds = append(cmds, loadCoverArtCmd(m.client, m.selectedArtist.CoverArtID))
+		}
+		return m, tea.Batch(cmds...)
 	}
 	if m.activeTab == TabSongs && m.selectedSong != nil {
 		return m, playSongCmd(m.client, *m.selectedSong)
@@ -335,6 +376,9 @@ func (m Model) View() string {
 
 func (m Model) renderStatusBar() string {
 	status := "Connected: " + m.cfg.ServerURL
+	if m.errorMsg != "" {
+		status = "Error: " + m.errorMsg
+	}
 	return m.styles.StatusBar.Render(status)
 }
 
@@ -391,7 +435,10 @@ func (m Model) renderAlbumInfo() string {
 		return ""
 	}
 
-	info := "No cover art available"
+	info := m.selectedAlbum.CoverArtID
+	if info == "" {
+		info = "No cover art available"
+	}
 	return info
 }
 
@@ -400,7 +447,10 @@ func (m Model) renderArtistInfo() string {
 		return ""
 	}
 
-	info := "No cover art available"
+	info := m.selectedArtist.CoverArtID
+	if info == "" {
+		info = "No cover art available"
+	}
 	return info
 }
 

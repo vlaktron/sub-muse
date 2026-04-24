@@ -1,10 +1,8 @@
-//nolint:unused
 package ui
 
-import "sub-muse/internal/subsonic"
-
-// Message types for Bubble Tea UI events
-// These types will be used in the model Update() function
+import (
+	"sub-muse/internal/subsonic"
+)
 
 type songsLoadedMsg struct {
 	songs []subsonic.Song
@@ -43,7 +41,6 @@ type coverArtLoadedMsg struct {
 }
 
 type coverArtRenderedMsg struct {
-	id       string
 	rendered string
 }
 
@@ -55,6 +52,4 @@ type playbackStoppedMsg struct{}
 
 type playbackTickMsg struct{}
 
-type playbackErrorMsg struct {
-	err error
-}
+type playbackErrorMsg struct{}
