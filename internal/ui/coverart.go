@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"image"
 	"image/color"
 	_ "image/jpeg"
@@ -13,7 +14,7 @@ func decodeImage(data []byte) (image.Image, error) {
 		return nil, nil
 	}
 
-	img, _, err := image.Decode(strings.NewReader(string(data)))
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -33,13 +34,13 @@ func NewCoverArtRenderer() *CoverArtRenderer {
 }
 
 func (r *CoverArtRenderer) Render(data []byte, width, height int) (string, error) {
-	if len(data) == 0 {
+	if len(data) == 0 || width <= 0 || height <= 0 {
 		return "", nil
 	}
 
 	img, err := decodeImage(data)
-	if err != nil {
-		return err.Error(), nil
+	if err != nil || img == nil {
+		return "", err
 	}
 
 	bounds := img.Bounds()

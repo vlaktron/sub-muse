@@ -1,3 +1,7 @@
+/*
+* Package for lipgloss styles
+ */
+
 package ui
 
 import "github.com/charmbracelet/lipgloss"
@@ -13,6 +17,10 @@ type Styles struct {
 	// Selection colors
 	SelectionForeground lipgloss.Color
 	SelectionBackground lipgloss.Color
+
+	// Tab Styles
+	ActiveTab   lipgloss.Style
+	InactiveTab lipgloss.Style
 
 	// Browser styles
 	BrowserBorder lipgloss.Style
@@ -48,10 +56,22 @@ func NewStyles(accent string) Styles {
 		SelectionForeground: lipgloss.Color("#000000"),
 		SelectionBackground: accentColor,
 
+		ActiveTab: lipgloss.NewStyle().
+			Background(accentColor).
+			Foreground(lipgloss.Color("#000000")). // Black text on accent background
+			Padding(0, 1).
+			Bold(true).
+			MarginRight(1),
+
+		InactiveTab: lipgloss.NewStyle().
+			Foreground(accentColor).
+			Padding(0, 1).
+			MarginRight(1),
+
 		BrowserBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(accentColor).
-			Padding(1),
+			Padding(0, 1),
 
 		BrowserTitle: lipgloss.NewStyle().
 			Foreground(accentColor).

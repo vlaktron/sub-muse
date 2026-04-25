@@ -41,6 +41,7 @@ type coverArtLoadedMsg struct {
 }
 
 type coverArtRenderedMsg struct {
+	id       string
 	rendered string
 }
 
@@ -52,4 +53,6 @@ type playbackStoppedMsg struct{}
 
 type playbackTickMsg struct{}
 
-type playbackErrorMsg struct{}
+type playbackErrorMsg struct {
+	err error
+}

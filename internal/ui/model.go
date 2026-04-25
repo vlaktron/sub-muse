@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"sub-muse/internal/config"
@@ -9,8 +10,16 @@ import (
 	"sub-muse/internal/subsonic"
 	"sub-muse/internal/theme"
 
+	table "github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+)
+
+type PaneType int
+
+const (
+	PaneBrowser PaneType = iota
+	PaneInfo
 )
 
 type Model struct {
@@ -21,6 +30,7 @@ type Model struct {
 	width, height int
 
 	activeTab   TabType
+	activePane  PaneType
 	searchInput string
 
 	songs     []subsonic.Song
@@ -28,7 +38,6 @@ type Model struct {
 	albums    []subsonic.Album
 	playlists []subsonic.Playlist
 
-	selectedSong   *subsonic.Song
 	selectedAlbum  *subsonic.Album
 	selectedArtist *subsonic.Artist
 
@@ -45,18 +54,14 @@ type Model struct {
 }
 
 func NewModel(cfg *config.Config, colors theme.Colors) Model {
+	styles := NewStyles(colors.Accent) // Create styles first
+
 	return Model{
 		cfg:    cfg,
 		client: subsonic.NewClient(cfg.ServerURL, cfg.Username, cfg.Password, cfg.ClientName),
-		styles: NewStyles(colors.Accent),
-		browser: &Browser{
-			Headers:       []string{"#", "Title", "Artist", "Yr", "Genre"},
-			SelectedIndex: 0,
-			TabType:       TabSongs,
-			Filter:        "",
-			ScrollOffset:  0,
-			Styles:        NewStyles(colors.Accent),
-		},
+		styles: styles,
+		// Update this line:
+		browser:       NewBrowser(styles),
 		player:        player.NewPlayer(),
 		coverArtCache: make(map[string]string),
 	}
@@ -77,6 +82,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		browserHeight := m.height - 10
+		browserWidith := m.width * 65 / 100
+
+		m.browser.table.SetHeight(browserHeight - 4)
+		m.browser.table.SetWidth(browserWidith - 2)
+
 		return m, nil
 	case tea.KeyMsg:
 		return m.handleKeyMsg(msg)
@@ -85,7 +97,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.errorMsg = msg.err.Error()
 		} else {
 			m.songs = msg.songs
-			m.updateBrowserForTab()
+			// Convert your songs to the table.Row format
+			var rows []table.Row
+			for i, song := range m.songs {
+				rows = append(rows, table.Row{
+					fmt.Sprintf("%d", i+1),
+					song.Title,
+					song.Artist,
+					fmt.Sprintf("%d", song.Year),
+					song.Genre,
+				})
+			}
+			// Send the rows to the browser component
+			m.browser.UpdateData(TabSongs, rows)
 		}
 	case artistsLoadedMsg:
 		if msg.err != nil {
@@ -115,14 +139,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.errorMsg = msg.err.Error()
 		} else if msg.id != "" {
-			m.coverArtCache[msg.id] = string(msg.data)
-			return m, renderCoverArtCmd(msg.data, 200, 200)
+			return m, renderCoverArtCmd(msg.id, msg.data, 40, 20)
 		}
 	case coverArtRenderedMsg:
-		if m.selectedAlbum != nil && m.selectedAlbum.CoverArtID != "" {
-			if rendered, ok := m.coverArtCache[m.selectedAlbum.CoverArtID]; ok {
-				m.selectedAlbum.CoverArtID = rendered
-			}
+		if msg.id != "" {
+			m.coverArtCache[msg.id] = msg.rendered
 		}
 	case albumDetailMsg:
 		if msg.err == nil && msg.album != nil {
@@ -136,12 +157,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.nowPlaying = &msg.song
 		m.queue = []subsonic.Song{msg.song}
 		m.queuePos = 0
+		return m, m.playerTickCmd()
 	case playbackTickMsg:
-		m.elapsed = m.player.GetState().Elapsed
+		state := m.player.GetState()
+		if m.nowPlaying != nil && !state.IsPlaying {
+			// Song finished naturally
+			m.nowPlaying = nil
+			m.elapsed = 0
+			return m, nil
+		}
+		m.elapsed = state.Elapsed
+		if m.nowPlaying != nil {
+			return m, m.playerTickCmd()
+		}
 	case playbackStoppedMsg:
 		m.nowPlaying = nil
 		m.elapsed = 0
 	case playbackErrorMsg:
+		m.errorMsg = msg.err.Error()
 		m.nowPlaying = nil
 		m.elapsed = 0
 	}
@@ -149,41 +182,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Global keys work in any pane
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
-	case "tab":
-		m.activeTab = m.activeTab.Next()
-		m.updateBrowserForTab()
-		return m, nil
-	case "shift+tab":
-		m.activeTab = m.activeTab.Prev()
-		m.updateBrowserForTab()
-		return m, nil
-	case "1":
-		m.activeTab = TabSongs
-		m.updateBrowserForTab()
-		return m, nil
-	case "2":
-		m.activeTab = TabArtists
-		m.updateBrowserForTab()
-		return m, nil
-	case "3":
-		m.activeTab = TabAlbums
-		m.updateBrowserForTab()
-		return m, nil
-	case "4":
-		m.activeTab = TabPlaylists
-		m.updateBrowserForTab()
-		return m, nil
-	case "up", "k":
-		m.browser.Up()
-		return m, nil
-	case "down", "j":
-		m.browser.Down()
-		return m, nil
-	case "enter":
-		return m.handleEnterKey()
 	case " ", "p":
 		return m.handlePlayPause()
 	case "n":
@@ -193,126 +195,115 @@ func (m Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "s":
 		return m.handleStop()
 	}
+
+	// Pane switching
+	switch msg.String() {
+	case "l", "right":
+		if m.activePane == PaneBrowser {
+			m.activePane = PaneInfo
+			return m, nil
+		}
+	case "h", "left", "esc":
+		if m.activePane == PaneInfo {
+			m.activePane = PaneBrowser
+			return m, nil
+		}
+	}
+
+	// Browser-pane keys
+	if m.activePane == PaneBrowser {
+		switch msg.String() {
+		case "tab":
+			m.activeTab = m.activeTab.Next()
+			m.updateBrowserForTab()
+		case "shift+tab":
+			m.activeTab = m.activeTab.Prev()
+			m.updateBrowserForTab()
+		case "1":
+			m.activeTab = TabSongs
+			m.updateBrowserForTab()
+		case "2":
+			m.activeTab = TabArtists
+			m.updateBrowserForTab()
+		case "3":
+			m.activeTab = TabAlbums
+			m.updateBrowserForTab()
+		case "4":
+			m.activeTab = TabPlaylists
+			m.updateBrowserForTab()
+		case "up", "k", "down", "j":
+			_, cmd := m.browser.Update(msg)
+			return m, cmd
+		case "enter":
+			return m.handleEnterKey()
+		}
+	}
+
 	return m, nil
 }
 
 func (m Model) updateBrowserForTab() {
-	m.browser.TabType = m.activeTab
+	var rows []table.Row
+
 	switch m.activeTab {
 	case TabSongs:
-		m.browser.Rows = m.formatSongsForTable()
-		if len(m.browser.Rows) > 0 && m.selectedSong != nil {
-			idx := m.findSongIndex(*m.selectedSong)
-			if idx < len(m.browser.Rows) {
-				m.browser.SelectedIndex = idx
-			}
+		for i, s := range m.songs {
+			rows = append(rows, table.Row{
+				fmt.Sprintf("%d", i+1),
+				s.Title,
+				s.Artist,
+				fmt.Sprintf("%d", s.Year),
+				s.Genre,
+			})
 		}
-	case TabArtists:
-		m.browser.Rows = m.formatArtistsForTable()
-	case TabAlbums:
-		m.browser.Rows = m.formatAlbumsForTable()
-	case TabPlaylists:
-		m.browser.Rows = m.formatPlaylistsForTable()
+		// Add cases for Artists, Albums, etc., following the same pattern
 	}
-	m.browser.ScrollToCenter()
+
+	// Pass the rows to the browser component
+	m.browser.UpdateData(m.activeTab, rows)
 }
 
-func (m Model) formatSongsForTable() [][]string {
-	rows := make([][]string, 0)
-	for i, song := range m.songs {
-		year := ""
-		if song.Year > 0 {
-			year = fmt.Sprintf("%d", song.Year)
-		}
-		rows = append(rows, []string{
-			fmt.Sprintf("%d", i+1),
-			truncateString(song.Title, 20),
-			truncateString(song.Artist, 15),
-			year,
-			truncateString(song.Genre, 10),
-		})
+func (m Model) selectedDataIndex() int {
+	// Get the currently selected row from the table component
+	row := m.browser.table.SelectedRow()
+	if len(row) == 0 {
+		return -1
 	}
-	return rows
-}
 
-func (m Model) formatArtistsForTable() [][]string {
-	rows := make([][]string, 0)
-	for i, artist := range m.artists {
-		rows = append(rows, []string{
-			fmt.Sprintf("%d", i+1),
-			truncateString(artist.Name, 30),
-			"",
-			"",
-			"",
-		})
+	// Your logic to parse the "#" column (row[0]) back to an int
+	var n int
+	if _, err := fmt.Sscanf(row[0], "%d", &n); err != nil {
+		return -1
 	}
-	return rows
-}
-
-func (m Model) formatAlbumsForTable() [][]string {
-	rows := make([][]string, 0)
-	for i, album := range m.albums {
-		year := ""
-		if album.Year > 0 {
-			year = fmt.Sprintf("%d", album.Year)
-		}
-		rows = append(rows, []string{
-			fmt.Sprintf("%d", i+1),
-			truncateString(album.Name, 20),
-			truncateString(album.Artist, 15),
-			year,
-			"",
-		})
-	}
-	return rows
-}
-
-func (m Model) formatPlaylistsForTable() [][]string {
-	rows := make([][]string, 0)
-	for i, playlist := range m.playlists {
-		rows = append(rows, []string{
-			fmt.Sprintf("%d", i+1),
-			truncateString(playlist.Name, 30),
-			fmt.Sprintf("%d", playlist.SongCount),
-			"",
-			"",
-		})
-	}
-	return rows
+	return n - 1
 }
 
 func (m Model) handleEnterKey() (tea.Model, tea.Cmd) {
-	if m.activeTab == TabAlbums && m.selectedAlbum != nil {
-		cmds := []tea.Cmd{
-			loadAlbumDetailCmd(m.client, m.selectedAlbum.ID),
-		}
-		if m.selectedAlbum.CoverArtID != "" {
-			cmds = append(cmds, loadCoverArtCmd(m.client, m.selectedAlbum.CoverArtID))
-		}
-		return m, tea.Batch(cmds...)
+	idx := m.selectedDataIndex()
+	if idx < 0 {
+		return m, nil
 	}
-	if m.activeTab == TabArtists && m.selectedArtist != nil {
-		cmds := []tea.Cmd{
-			loadArtistDetailCmd(m.client, m.selectedArtist.ID),
+	switch m.activeTab {
+	case TabSongs:
+		if idx < len(m.songs) {
+			return m, playSongCmd(m.client, m.player, m.songs[idx])
 		}
-		if m.selectedArtist.CoverArtID != "" {
-			cmds = append(cmds, loadCoverArtCmd(m.client, m.selectedArtist.CoverArtID))
+	case TabArtists:
+		if idx < len(m.artists) {
+			m.selectedArtist = &m.artists[idx]
+			return m, loadArtistDetailCmd(m.client, m.selectedArtist.ID)
 		}
-		return m, tea.Batch(cmds...)
-	}
-	if m.activeTab == TabSongs && m.selectedSong != nil {
-		return m, playSongCmd(m.client, *m.selectedSong)
+	case TabAlbums:
+		if idx < len(m.albums) {
+			m.selectedAlbum = &m.albums[idx]
+			cmds := []tea.Cmd{loadAlbumDetailCmd(m.client, m.selectedAlbum.ID)}
+			if m.selectedAlbum.CoverArtID != "" {
+				cmds = append(cmds, loadCoverArtCmd(m.client, m.selectedAlbum.CoverArtID))
+			}
+			return m, tea.Batch(cmds...)
+		}
 	}
 	return m, nil
-}
-
-func (m Model) findSongIndex(song subsonic.Song) int {
-	for i, s := range m.songs {
-		if s.ID == song.ID {
-			return i
-		}
-	}
-	return 0
 }
 
 func (m Model) playerTickCmd() tea.Cmd {
@@ -322,17 +313,16 @@ func (m Model) playerTickCmd() tea.Cmd {
 }
 
 func (m Model) handlePlayPause() (tea.Model, tea.Cmd) {
-	if m.nowPlaying == nil {
-		if len(m.queue) > 0 {
-			song := m.queue[m.queuePos]
-			return m, playSongCmd(m.client, song)
-		}
-		return m, nil
-	}
-
 	state := m.player.GetState()
 	if state.IsPlaying {
-		return m, stopSongCmd()
+		return m, stopSongCmd(m.player)
+	}
+	// Restart current song if one is queued
+	if m.nowPlaying != nil {
+		return m, playSongCmd(m.client, m.player, *m.nowPlaying)
+	}
+	if len(m.queue) > 0 {
+		return m, playSongCmd(m.client, m.player, m.queue[m.queuePos])
 	}
 	return m, nil
 }
@@ -344,7 +334,7 @@ func (m Model) handleNext() (tea.Model, tea.Cmd) {
 
 	m.queuePos = (m.queuePos + 1) % len(m.queue)
 	song := m.queue[m.queuePos]
-	return m, playSongCmd(m.client, song)
+	return m, playSongCmd(m.client, m.player, song)
 }
 
 func (m Model) handlePrev() (tea.Model, tea.Cmd) {
@@ -354,16 +344,24 @@ func (m Model) handlePrev() (tea.Model, tea.Cmd) {
 
 	m.queuePos = (m.queuePos - 1 + len(m.queue)) % len(m.queue)
 	song := m.queue[m.queuePos]
-	return m, playSongCmd(m.client, song)
+	return m, playSongCmd(m.client, m.player, song)
 }
 
 func (m Model) handleStop() (tea.Model, tea.Cmd) {
-	return m, stopSongCmd()
+	return m, stopSongCmd(m.player)
 }
 
 func (m Model) View() string {
+	statusHeight := 5
+	playerHeight := 5
+	contentHeight := m.height - statusHeight - playerHeight
+
+	if contentHeight < 5 {
+		return "Terminal too small..."
+	}
+
 	statusBar := m.renderStatusBar()
-	contentRow := m.renderContentRow()
+	contentRow := m.renderContentRow(contentHeight)
 	playerBar := m.renderPlayerBar()
 
 	return lipgloss.JoinVertical(
@@ -374,50 +372,26 @@ func (m Model) View() string {
 	)
 }
 
-func (m Model) renderStatusBar() string {
-	status := "Connected: " + m.cfg.ServerURL
-	if m.errorMsg != "" {
-		status = "Error: " + m.errorMsg
-	}
-	return m.styles.StatusBar.Render(status)
-}
-
-func (m Model) renderContentRow() string {
-	contentHeight := m.height - 1 - 3
-
+func (m Model) renderContentRow(h int) string {
+	// Total height for the middle section
 	browserW := m.width * 65 / 100
-	infoW := m.width - browserW - 2
+	infoW := max(0, m.width-browserW-2)
 
-	browserContent := m.renderBrowser()
-	infoContent := m.renderInfoPane()
+	// Get the fully rendered browser (tabs + table)
+	browserView := m.browser.Render(m.activeTab, m.searchInput, browserW, h)
+
+	// Apply border colors based on focus
+	browserStyle := m.styles.BrowserBorder
+	infoStyle := m.styles.InfoBorder
+	if m.activePane == PaneInfo {
+		browserStyle = browserStyle.BorderForeground(lipgloss.Color("#444444"))
+	}
 
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
-		m.styles.BrowserBorder.Width(browserW).Height(contentHeight).Render(browserContent),
-		m.styles.InfoBorder.Width(infoW).Height(contentHeight).Render(infoContent),
+		browserStyle.Width(browserW).Height(h).Render(browserView),
+		infoStyle.Width(infoW).Height(h).Render(m.renderInfoPane()),
 	)
-}
-
-func (m Model) renderBrowser() string {
-	m.browser.Headers = []string{"#", "Title", "Artist", "Yr", "Genre"}
-	m.browser.Filter = m.searchInput
-
-	switch m.activeTab {
-	case TabSongs:
-		m.browser.Rows = m.formatSongsForTable()
-	case TabArtists:
-		m.browser.Rows = m.formatArtistsForTable()
-	case TabAlbums:
-		m.browser.Rows = m.formatAlbumsForTable()
-	case TabPlaylists:
-		m.browser.Rows = m.formatPlaylistsForTable()
-	}
-
-	if m.browser.SelectedIndex >= len(m.browser.Rows) {
-		m.browser.SelectedIndex = 0
-	}
-
-	return m.browser.Render(m.width*65/100, m.height-4)
 }
 
 func (m Model) renderInfoPane() string {
@@ -431,27 +405,40 @@ func (m Model) renderInfoPane() string {
 }
 
 func (m Model) renderAlbumInfo() string {
-	if m.selectedAlbum == nil {
+	album := m.selectedAlbum
+	if album == nil {
 		return ""
 	}
 
-	info := m.selectedAlbum.CoverArtID
-	if info == "" {
-		info = "No cover art available"
+	var lines []string
+	if art, ok := m.coverArtCache[album.CoverArtID]; ok && art != "" {
+		lines = append(lines, art)
 	}
-	return info
+	lines = append(lines, album.Name)
+	if album.Artist != "" {
+		lines = append(lines, album.Artist)
+	}
+	if album.Year > 0 {
+		lines = append(lines, fmt.Sprintf("Year: %d", album.Year))
+	}
+	if album.SongCount > 0 {
+		lines = append(lines, fmt.Sprintf("Tracks: %d", album.SongCount))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderArtistInfo() string {
-	if m.selectedArtist == nil {
+	artist := m.selectedArtist
+	if artist == nil {
 		return ""
 	}
 
-	info := m.selectedArtist.CoverArtID
-	if info == "" {
-		info = "No cover art available"
+	var lines []string
+	lines = append(lines, artist.Name)
+	if artist.AlbumCount > 0 {
+		lines = append(lines, fmt.Sprintf("Albums: %d", artist.AlbumCount))
 	}
-	return info
+	return strings.Join(lines, "\n")
 }
 
 func (m Model) renderPlayerBar() string {
@@ -492,4 +479,9 @@ func (m Model) renderPlayerBar() string {
 	}
 
 	return playerBar.Render(m.width)
+}
+
+func (m Model) renderStatusBar() string {
+	status := "Connected: " + m.cfg.ServerURL
+	return m.styles.StatusBar.Render(status)
 }

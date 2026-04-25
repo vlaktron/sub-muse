@@ -27,49 +27,34 @@ func (p *PlayerBar) Render(width int) string {
 		return p.renderMinimal(width)
 	}
 
-	lines := []string{}
-
 	playIcon := "□"
 	if p.Playing {
 		playIcon = "■"
 	}
-	metadata := fmt.Sprintf("%s %s - %s", playIcon, p.SongTitle, p.Artist)
-	metadata = truncateString(metadata, width)
-	lines = append(lines, p.Styles.PlayerBar.Render(metadata))
+	metadata := truncateString(fmt.Sprintf("%s %s - %s", playIcon, p.SongTitle, p.Artist), width)
 
-	progressFilled := int(p.Progress * float64(width-8))
-	progressEmpty := width - 8 - progressFilled
-
-	progressBar := "["
-	for i := 0; i < progressFilled; i++ {
-		progressBar += "█"
-	}
-	for i := 0; i < progressEmpty; i++ {
-		progressBar += "░"
-	}
-	progressBar += "]"
-	lines = append(lines, p.Styles.PlayerBar.Render(progressBar))
+	barWidth := max(0, width-8)
+	progressFilled := int(p.Progress * float64(barWidth))
+	progressEmpty := barWidth - progressFilled
+	progressBar := "[" + strings.Repeat("█", progressFilled) + strings.Repeat("░", progressEmpty) + "]"
 
 	timeStr := fmt.Sprintf("%s / %s", p.FormatTime(p.CurrentTime), p.FormatTime(p.Duration))
-	lines = append(lines, p.Styles.PlayerBar.Render(timeStr))
 
-	return strings.Join(lines, "\n")
+	content := strings.Join([]string{metadata, progressBar, timeStr}, "\n")
+	return p.Styles.PlayerBar.Render(content)
 }
 
 func (p *PlayerBar) renderMinimal(width int) string {
-	lines := []string{}
-
 	playIcon := "□"
 	if p.Playing {
 		playIcon = "■"
 	}
-	metadata := fmt.Sprintf("%s %s", playIcon, truncateString(p.SongTitle, width-4))
-	lines = append(lines, p.Styles.PlayerBar.Render(metadata))
-
+	titleWidth := max(0, width-4)
+	metadata := fmt.Sprintf("%s %s", playIcon, truncateString(p.SongTitle, titleWidth))
 	timeStr := fmt.Sprintf("%s / %s", p.FormatTime(p.CurrentTime), p.FormatTime(p.Duration))
-	lines = append(lines, p.Styles.PlayerBar.Render(timeStr))
 
-	return strings.Join(lines, "\n")
+	content := strings.Join([]string{metadata, timeStr}, "\n")
+	return p.Styles.PlayerBar.Render(content)
 }
 
 func truncateString(s string, maxWidth int) string {

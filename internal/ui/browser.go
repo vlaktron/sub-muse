@@ -1,161 +1,123 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 type Browser struct {
-	Headers       []string
-	Rows          [][]string
-	SelectedIndex int
-	TabType       TabType
-	Filter        string
-	ScrollOffset  int
-	Styles        Styles
-	lastHeight    int
+	table  table.Model
+	styles Styles
 }
 
-func (b *Browser) Render(width, height int) string {
-	if width < 10 || height < 5 {
-		return ""
-	}
+func NewBrowser(s Styles) *Browser {
+	t := table.New(table.WithFocused(true))
 
-	b.lastHeight = height
-
-	var sb strings.Builder
-
-	tabLabel := TabLabels[b.TabType]
-	tabStyle := lipgloss.NewStyle().
-		Foreground(b.Styles.Accent).
-		Bold(true).
-		PaddingLeft(1)
-	sb.WriteString(tabStyle.Render("[" + tabLabel + "]"))
-	sb.WriteString("\n")
-
-	if b.Filter != "" {
-		filterStyle := lipgloss.NewStyle().
-			Border(lipgloss.NormalBorder()).
-			BorderForeground(b.Styles.Accent).
-			Padding(0, 1)
-		sb.WriteString(filterStyle.Render("Filter: " + b.Filter))
-		sb.WriteString("\n")
-	}
-
-	filteredRows := b.FilterRows()
-	visibleRows := b.VisibleRows()
-
-	if len(filteredRows) == 0 {
-		sb.WriteString(lipgloss.NewStyle().Padding(1).Render("No results"))
-		return sb.String()
-	}
-
-	headerStyle := lipgloss.NewStyle().
-		Foreground(b.Styles.Accent).
+	// Apply the industrial styles from your styles.go
+	ts := table.DefaultStyles()
+	ts.Header = ts.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(s.Accent).
+		BorderBottom(true).
 		Bold(true)
 
-	headerRow := headerStyle.Render(lipgloss.JoinHorizontal(
+	ts.Selected = ts.Selected.
+		Foreground(s.SelectionForeground).
+		Background(s.SelectionBackground).
+		Bold(false)
+
+	t.SetStyles(ts)
+
+	return &Browser{
+		table:  t,
+		styles: s,
+	}
+}
+
+// UpdateData refreshes the table content when tabs switch or search results change
+func (b *Browser) UpdateData(tab TabType, rows []table.Row) {
+	var columns []table.Column
+
+	switch tab {
+	case TabSongs:
+		columns = []table.Column{
+			{Title: "#", Width: 4},
+			{Title: "Title", Width: 25},
+			{Title: "Artist", Width: 20},
+			{Title: "Yr", Width: 6},
+			{Title: "Genre", Width: 15},
+		}
+	case TabArtists:
+		columns = []table.Column{
+			{Title: "#", Width: 4},
+			{Title: "Artist", Width: 50},
+		}
+	case TabAlbums:
+		columns = []table.Column{
+			{Title: "#", Width: 4},
+			{Title: "Album", Width: 30},
+			{Title: "Artist", Width: 20},
+			{Title: "Yr", Width: 6},
+		}
+	case TabPlaylists:
+		columns = []table.Column{
+			{Title: "#", Width: 4},
+			{Title: "Playlist", Width: 40},
+			{Title: "Tracks", Width: 10},
+		}
+	}
+
+	b.table.SetColumns(columns)
+	b.table.SetRows(rows)
+}
+
+func (b *Browser) Render(activeTab TabType, searchStr string, width, height int) string {
+	// 1. Calculate how many rows our header uses
+	// Tab row (1) + Spacer (1) + Search bar (1) + Spacer (1) = 4 rows
+	headerHeight := 4
+	b.table.SetWidth(width - 2)
+	b.table.SetHeight(height - headerHeight)
+
+	// 2. Render Tab Bar (using your TabLabels map)
+	var tabs []string
+	for i := 0; i < 4; i++ {
+		t := TabType(i)
+		label := strings.ToUpper(TabLabels[t]) // 90s industrial look likes All-Caps
+		style := b.styles.InactiveTab
+		if t == activeTab {
+			style = b.styles.ActiveTab
+		}
+		tabs = append(tabs, style.Render(fmt.Sprintf(" %d:%s ", i+1, label)))
+	}
+	tabRow := lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
+
+	// 3. Render Search Bar
+	searchBar := b.styles.SearchInput.Render(fmt.Sprintf(" [ / ] SEARCH: %s ", searchStr))
+
+	// 4. Join it all vertically
+	// The table.View() already includes its own headers
+	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		b.Headers...,
-	))
-	sb.WriteString(headerRow)
-	sb.WriteString("\n")
-
-	startIndex := b.ScrollOffset
-	endIndex := startIndex + visibleRows
-
-	if endIndex > len(filteredRows) {
-		endIndex = len(filteredRows)
-	}
-
-	for i := startIndex; i < endIndex; i++ {
-		row := filteredRows[i]
-		rowStr := lipgloss.JoinHorizontal(lipgloss.Left, row...)
-
-		if i == b.SelectedIndex {
-			rowStr = b.Styles.Table.
-				Background(b.Styles.SelectionBackground).
-				Foreground(b.Styles.SelectionForeground).
-				Render(rowStr)
-		} else {
-			rowStr = b.Styles.Table.Render(rowStr)
-		}
-
-		sb.WriteString(rowStr)
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
+		tabRow,
+		"", // Empty string creates a spacer line
+		searchBar,
+		"",
+		b.table.View(),
+	)
 }
 
-func (b *Browser) FilterRows() [][]string {
-	if b.Filter == "" {
-		return b.Rows
-	}
-
-	filterLower := strings.ToLower(b.Filter)
-	var filtered [][]string
-
-	for _, row := range b.Rows {
-		match := false
-		for _, cell := range row {
-			if strings.Contains(strings.ToLower(cell), filterLower) {
-				match = true
-				break
-			}
-		}
-		if match {
-			filtered = append(filtered, row)
-		}
-	}
-
-	return filtered
+// GetSelectedIndex returns the index of the current row in the data slice
+func (b *Browser) GetSelectedIndex() int {
+	return b.table.Cursor()
 }
 
-func (b *Browser) VisibleRows() int {
-	visible := 1
-	if b.Filter != "" {
-		visible++
-	}
-	return max(0, b.lastHeight-3-visible)
-}
-
-func (b *Browser) ScrollToCenter() {
-	visibleRows := b.VisibleRows()
-	if visibleRows <= 0 {
-		return
-	}
-
-	if b.SelectedIndex >= b.ScrollOffset+visibleRows {
-		b.ScrollOffset = b.SelectedIndex - visibleRows + 1
-	} else if b.SelectedIndex < b.ScrollOffset {
-		b.ScrollOffset = b.SelectedIndex
-	}
-}
-
-func (b *Browser) Up() {
-	if len(b.Rows) == 0 {
-		return
-	}
-
-	if b.SelectedIndex > 0 {
-		b.SelectedIndex--
-	} else {
-		b.SelectedIndex = len(b.Rows) - 1
-	}
-	b.ScrollToCenter()
-}
-
-func (b *Browser) Down() {
-	if len(b.Rows) == 0 {
-		return
-	}
-
-	if b.SelectedIndex < len(b.Rows)-1 {
-		b.SelectedIndex++
-	} else {
-		b.SelectedIndex = 0
-	}
-	b.ScrollToCenter()
+// Update passes messages (like keyboard events) to the internal table
+func (b *Browser) Update(msg tea.Msg) (table.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	b.table, cmd = b.table.Update(msg)
+	return b.table, cmd
 }

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"sub-muse/internal/player"
 	"sub-muse/internal/subsonic"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -48,14 +49,22 @@ func loadArtistDetailCmd(client *subsonic.Client, artistID string) tea.Cmd {
 	}
 }
 
-func playSongCmd(client *subsonic.Client, song subsonic.Song) tea.Cmd {
+func playSongCmd(client *subsonic.Client, p *player.Player, song subsonic.Song) tea.Cmd {
 	return func() tea.Msg {
+		data, err := client.Stream(subsonic.WithID(song.ID))
+		if err != nil {
+			return playbackErrorMsg{err: err}
+		}
+		if err := p.Play(song, data); err != nil {
+			return playbackErrorMsg{err: err}
+		}
 		return playbackStartedMsg{song: song}
 	}
 }
 
-func stopSongCmd() tea.Cmd {
+func stopSongCmd(p *player.Player) tea.Cmd {
 	return func() tea.Msg {
+		_ = p.Stop()
 		return playbackStoppedMsg{}
 	}
 }
@@ -67,10 +76,10 @@ func loadCoverArtCmd(client *subsonic.Client, coverArtID string) tea.Cmd {
 	}
 }
 
-func renderCoverArtCmd(imgData []byte, width, height int) tea.Cmd {
+func renderCoverArtCmd(id string, imgData []byte, width, height int) tea.Cmd {
 	return func() tea.Msg {
 		renderer := NewCoverArtRenderer()
 		rendered, _ := renderer.Render(imgData, width, height)
-		return coverArtRenderedMsg{rendered: rendered}
+		return coverArtRenderedMsg{id: id, rendered: rendered}
 	}
 }
