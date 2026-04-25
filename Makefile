@@ -12,7 +12,10 @@ build:
 	go build -o ./bin/$(BINARY) .
 
 run:
-	go run .
+	go run ./bin/$(BINARY)
+
+full-build: clean build
+	./bin/$(BINARY)
 
 ## Dependencies
 
