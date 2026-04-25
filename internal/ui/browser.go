@@ -41,6 +41,7 @@ func NewBrowser(s Styles) *Browser {
 // UpdateData refreshes the table content when tabs switch or search results change
 func (b *Browser) UpdateData(tab TabType, rows []table.Row) {
 	var columns []table.Column
+	b.table.SetRows([]table.Row{})
 
 	switch tab {
 	case TabSongs:
@@ -73,6 +74,7 @@ func (b *Browser) UpdateData(tab TabType, rows []table.Row) {
 
 	b.table.SetColumns(columns)
 	b.table.SetRows(rows)
+	b.table.SetCursor(0)
 }
 
 func (b *Browser) Render(activeTab TabType, searchStr string, width, height int) string {
@@ -84,7 +86,7 @@ func (b *Browser) Render(activeTab TabType, searchStr string, width, height int)
 
 	// 2. Render Tab Bar (using your TabLabels map)
 	var tabs []string
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		t := TabType(i)
 		label := strings.ToUpper(TabLabels[t]) // 90s industrial look likes All-Caps
 		style := b.styles.InactiveTab
