@@ -7,6 +7,8 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"strings"
+
+	"github.com/nfnt/resize"
 )
 
 func decodeImage(data []byte) (image.Image, error) {
@@ -43,9 +45,7 @@ func (r *CoverArtRenderer) Render(data []byte, width, height int) (string, error
 		return "", err
 	}
 
-	bounds := img.Bounds()
-	pixelWidth := bounds.Dx()
-	pixelHeight := bounds.Dy()
+	scaled := resize.Resize(uint(width*2), uint(height), img, resize.Lanczos3)
 
 	charLines := make([]string, height)
 
@@ -56,16 +56,16 @@ func (r *CoverArtRenderer) Render(data []byte, width, height int) (string, error
 			topPixel := color.Gray{}
 			bottomPixel := color.Gray{}
 
-			pixelX := x * pixelWidth / width
-			pixelYTop := y * pixelHeight / height
-			pixelYBottom := (y+1)*pixelHeight/height - 1
+			pixelX := x * 2
+			pixelYTop := y
+			pixelYBottom := y + 1
 
-			if pixelYTop < pixelHeight {
-				topPixel = color.Gray{Y: toGrayscale(img.At(bounds.Min.X+pixelX, bounds.Min.Y+pixelYTop))}
+			if pixelYTop < int(scaled.Bounds().Max.Y) {
+				topPixel = color.Gray{Y: toGrayscale(scaled.At(int(scaled.Bounds().Min.X)+pixelX, int(scaled.Bounds().Min.Y)+pixelYTop))}
 			}
 
-			if pixelYBottom < pixelHeight {
-				bottomPixel = color.Gray{Y: toGrayscale(img.At(bounds.Min.X+pixelX, bounds.Min.Y+pixelYBottom))}
+			if pixelYBottom < int(scaled.Bounds().Max.Y) {
+				bottomPixel = color.Gray{Y: toGrayscale(scaled.At(int(scaled.Bounds().Min.X)+pixelX, int(scaled.Bounds().Min.Y)+pixelYBottom))}
 			}
 
 			topBright := topPixel.Y > 127
